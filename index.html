@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>IPTV Player</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.3.8/shaka-player.compiled.js"></script>
+
+<style>
+html, body{
+  margin:0;
+  padding:0;
+  height:100%;
+  width:100%;
+  background:black;
+  overflow:hidden;
+}
+video{
+  width:100%;
+  height:100%;
+  object-fit: fill; /* stretch video to fill screen */
+  background:black;
+}
+
+/* TITLE OVERLAY */
+#titleOverlay{
+  position:absolute;
+  top:30px;   /* adjust vertical position */
+  left:50px;  /* adjust horizontal position */
+  
+  color:#fff;
+  font-family: Arial, sans-serif;
+  font-size:17px;  /* adjust font size */
+  padding: 10px 16px;  /* adjust padding around text */
+  border-radius: 8px;
+  z-index: 10;
+}
+
+  #secondText{
+  position:absolute;
+
+  bottom:50px;   /* adjust mo pwesto (ibaba) */
+  right:50px;     /* adjust mo pwesto (kaliwa) */
+
+
+  color:#fff;
+
+  font-family: Arial, sans-serif;
+  font-size: 20px;   /* 👉 LAKI / LIIT ng text */
+  padding: 8px 14px;
+  border-radius: 6px;
+
+  z-index:10;
+}
+
+    #secondText2{
+  position:absolute;
+
+  bottom:50px;   /* adjust mo pwesto (ibaba) */
+  left:50px;     /* adjust mo pwesto (kaliwa) */
+
+
+  color:#fff;
+
+  font-family: Arial, sans-serif;
+  font-size: 16px;   /* 👉 LAKI / LIIT ng text */
+  padding: 8px 14px;
+  border-radius: 6px;
+
+  z-index:10;
+}
+
+  #logo1{
+  position:absolute;
+
+  top:10px;      /* pwesto */
+  right:50px;
+
+  width:130px;    /* laki ng logo */
+  height:110px;
+
+  z-index:10;
+  pointer-events:none;
+}
+
+#logo2{
+  position:absolute;
+
+  top:20px;      /* pwesto */
+  left:20px;
+
+  width:80px;    /* laki ng logo */
+  height:auto;
+
+  z-index:10;
+  pointer-events:none;
+}
+
+#playlistPanel{
+  position:absolute;
+  top:0;
+  left:0;
+  width:260px;
+  height:100%;
+  background:rgba(0,0,0,0.75);
+  overflow-y:auto;
+  z-index:20;
+  padding-top:20px;
+  display:none; /* hidden by default */
+}
+
+.playItem{
+  padding:12px 15px;
+  color:#fff;
+  font-family:Arial;
+  font-size:15px;
+  border-bottom:1px solid rgba(255,255,255,0.15);
+  cursor:pointer;
+}
+
+.playItem:hover{
+  background:rgba(255,255,255,0.1);
+}
+
+
+
+  #marqueeText{
+  position:absolute;
+  bottom:0;
+  left:0;
+  width:100%;
+  overflow:hidden;
+
+ background:blue; /* background color */
+  color:#fff;
+
+  font-family:Arial;
+  font-size:18px;
+  padding:8px 0;
+
+  z-index:15;
+  display:none; /* default naka hide */
+}
+
+#marqueeContent{
+  display:inline-block;
+  padding-left:100%;
+  white-space:nowrap;
+  animation:scrollText 80s linear infinite;
+}
+
+@keyframes scrollText{
+  from{ transform:translateX(0); }
+  to{ transform:translateX(-100%); }
+}
+
+  #clockBox{
+  position:absolute;
+
+  bottom:0px;
+  left:6px;
+
+  background:black;
+  color:white;
+
+  font-family:Arial;
+  font-size:18px;
+
+  padding:10px 12px;
+  border-radius:4px;
+
+  z-index:15;
+}
+
+ 
+</style>
+</head>
+<body>
+
+<video id="video" autoplay playsinline></video>
+  <div id="marqueeText">
+  <span id="marqueeContent"></span>
+</div>
+<div id="playlistPanel"></div>
+<div id="titleOverlay"></div>
+<div id="secondText"></div>
+  <div id="secondText2"></div>
+  <div id="clockBox">
+  <span id="clockTime"></span>
+</div>
+<img id="logo1" >
+<img id="logo2" >
+
+
+
+  <script>
+document.addEventListener("DOMContentLoaded", () => {
+
+  const video = document.getElementById("video");
+  const titleOverlay = document.getElementById("titleOverlay");
+  const secondText = document.getElementById("secondText");
+   const secondText2 = document.getElementById("secondText2");
+  const logo1 = document.getElementById("logo1");
+  const logo2 = document.getElementById("logo2");
+  const clockTime = document.getElementById("clockTime");
+  const clockBox = document.getElementById("clockBox");
+  const marqueeText = document.getElementById("marqueeText");
+const marqueeContent = document.getElementById("marqueeContent");
+ let resumeKey = "video-resume-time";
+  const playlistPanel = document.getElementById("playlistPanel");
+
+function buildPlaylistUI(){
+  playlistPanel.innerHTML = "";
+
+  playlist.forEach((item,index)=>{
+    const div = document.createElement("div");
+    div.className = "playItem";
+    div.textContent = item.title;
+
+   div.onclick = async () => {
+
+  currentIndex = index;
+
+  if(item.type === "MP4"){
+    await playMP4(item.manifest,item);
+  }else if(item.type === "IPTV"){
+    await playMPD(item.manifest,item.key,item);
+  }
+
+  // hide playlist after clicking
+  playlistPanel.style.display = "none";
+
+};
+
+    playlistPanel.appendChild(div);
+  });
+}
+
+
+
+/* ADS EVERY 20 MINUTES */
+const commercials = [
+{
+type:"MP4",
+manifest:"https://ia600908.us.archive.org/9/items/zp_20260311/1NO%20SOUNDS.ia.mp4"
+},
+{
+type:"MP4",
+manifest:"https://ia800908.us.archive.org/9/items/zp_20260311/Video%20Ad%281080P_HD%29.ia.mp4"
+},
+{
+type:"MP4",
+manifest:"https://ia600908.us.archive.org/9/items/zp_20260311/b%20ads.ia.mp4"
+},
+{
+type:"MP4",
+manifest:"https://ia800908.us.archive.org/9/items/zp_20260311/w%20mtrcb.ia.mp4"
+},
+{
+type:"MP4",
+manifest:"https://ia800908.us.archive.org/9/items/zp_20260311/zp.ia.mp4"
+}
+];
+
+let adPlaying = false;
+let savedMovieTime = 0;
+let currentAdIndex = 0;
+
+
+
+
+
+  // Playlist
+  const playlist = [
+
+ {
+      type: "MP4",
+      manifest: "https://ia800709.us.archive.org/25/items/spider-man-homecoming-720-p_202603/I_Am_Number_Four_720P.mp4",
+     title: "I Am Number Four",
+    secondText: "Parental Guidance",
+    logo1: "https://i.imgur.com/tRyRFmM.png"
+    },
+
+
+/* MOVIES2 */
+ {
+      type: "MP4",
+      manifest: "https://ia800709.us.archive.org/25/items/spider-man-homecoming-720-p_202603/Jack_the_Giant_Slayer_720P.mp4",
+     title: "Jack the Giant Slayer",
+    secondText: "Parental Guidance",
+ logo1: "https://i.imgur.com/tRyRFmM.png"
+    },
+
+
+
+/* MOVIES3 */
+     {
+      type: "MP4",
+      manifest: "https://ia600709.us.archive.org/25/items/spider-man-homecoming-720-p_202603/Spider-Man_Homecoming_720P.mp4",
+     title: "Spider-Man Homecoming",
+    secondText: "Parental Guidance",
+    logo1: "https://i.imgur.com/tRyRFmM.png"
+    },
+
+
+
+
+/* MOVIES4 */
+{
+      type: "MP4",
+      manifest: "https://ia800709.us.archive.org/25/items/spider-man-homecoming-720-p_202603/The_Huntsman_Winter%27s_War_720P.mp4",
+     title: "The Huntsman Winter's War",
+    secondText: "Parental Guidance",
+ logo1: "https://i.imgur.com/tRyRFmM.png"
+    },
+
+
+
+/* MOVIES5 */
+    {
+      type: "MP4",
+      manifest: "https://ia903209.us.archive.org/30/items/jaws.-1975.-internal.-hdr-10-plus.-2160p.-uhd.-blu-ray.-x-265-iamable_202602/Final%20Destination%20Bloodlines%20%282025%29.mp4",
+     title: "Final Destination Bloodlines",
+    secondText: "Parental Guidance",
+    logo1: "https://i.imgur.com/tRyRFmM.png"
+    },
+
+
+
+
+/* MOVIES6 */
+    {
+      type: "MP4",
+      manifest: "https://ia903209.us.archive.org/30/items/jaws.-1975.-internal.-hdr-10-plus.-2160p.-uhd.-blu-ray.-x-265-iamable_202602/Finding%20Dory%20%282016%29.mp4",
+     title: "Finding Dory",
+    secondText: "Parental Guidance",
+ logo1: "https://i.imgur.com/tRyRFmM.png"
+    },
+
+
+
+/* MOVIES7 */
+      {
+      type: "MP4",
+      manifest: "https://ia903209.us.archive.org/30/items/jaws.-1975.-internal.-hdr-10-plus.-2160p.-uhd.-blu-ray.-x-265-iamable_202602/Five%20Nights%20at%20Freddy%27s%20%282023%29.mp4",
+     title: "Five Nights at Freddy",
+    secondText: "Parental Guidance",
+    logo1: "https://i.imgur.com/tRyRFmM.png"
+    },
+
+
+
+
+
+/* MOVIES8 */
+      {
+      type: "MP4",
+      manifest: "https://ia803209.us.archive.org/30/items/jaws.-1975.-internal.-hdr-10-plus.-2160p.-uhd.-blu-ray.-x-265-iamable_202602/Girl%20in%20the%20Basement%20%282021%29.mp4",
+     title: "Girl in the Basement",
+    secondText: "Parental Guidance",
+    logo1: "https://i.imgur.com/tRyRFmM.png"
+    },
+
+
+
+
+
+/* MOVIES9 */
+  {
+      type: "MP4",
+      manifest: "https://ia803209.us.archive.org/30/items/jaws.-1975.-internal.-hdr-10-plus.-2160p.-uhd.-blu-ray.-x-265-iamable_202602/Godzilla%20vs.%20Kong%20%282021%29.mp4",
+     title: "Godzilla vs. Kong",
+    secondText: "Parental Guidance",
+    logo1: "https://i.imgur.com/tRyRFmM.png"
+    },
+
+
+
+
+/* MOVIES10 */
+     {
+      type: "MP4",
+      manifest: "https://ia803209.us.archive.org/30/items/jaws.-1975.-internal.-hdr-10-plus.-2160p.-uhd.-blu-ray.-x-265-iamable_202602/Grown%20Ups%20%282010%29.mp4",
+     title: "Grown Ups",
+    secondText: "Parental Guidance",
+    logo1: "https://i.imgur.com/tRyRFmM.png"
+    },
+
+
+
+
+
+/* MOVIES11 */
+ {
+      type: "MP4",
+      manifest: "https://ia903209.us.archive.org/30/items/jaws.-1975.-internal.-hdr-10-plus.-2160p.-uhd.-blu-ray.-x-265-iamable_202602/Harry%20Potter%20and%20the%20Chamber%20of%20Secrets%20%282002%29.mp4",
+     title: "Harry Potter and the Chamber of Secrets",
+    secondText: "Parental Guidance",
+    logo1: "https://i.imgur.com/tRyRFmM.png"
+    },
+
+
+/* MOVIES12 */
+
+     {
+      type: "MP4",
+      manifest: "https://ia803209.us.archive.org/30/items/jaws.-1975.-internal.-hdr-10-plus.-2160p.-uhd.-blu-ray.-x-265-iamable_202602/Godzilla%20x%20Kong_%20The%20New%20Empire%20%282024%29.mp4",
+     title: "Godzilla x Kong The New Empire",
+    secondText: "Parental Guidance",
+    logo1: "https://i.imgur.com/tRyRFmM.png"
+    }
+
+
+    
+
+  
+  
+  ];
+
+
+
+
+  let currentIndex = 0;
+  shaka.polyfill.installAll();
+  let shakaPlayer = null;
+
+  async function destroyPlayers(){
+    if(shakaPlayer){
+      await shakaPlayer.destroy();
+      shakaPlayer = null;
+    }
+    video.removeAttribute("src");
+    video.load();
+  }
+
+  function updateOverlays(item){
+    titleOverlay.textContent = item.title || "";
+    secondText.textContent = item.secondText || "";
+    secondText.style.display = item.secondText ? "block" : "none";
+    secondText2.textContent = item.secondText2 || "";
+    secondText2.style.display = item.secondText2 ? "block" : "none";
+
+
+    logo1.src = item.logo1 || "";
+    logo1.style.display = item.logo1 ? "block" : "none";
+
+    logo2.src = item.logo2 || "";
+    logo2.style.display = item.logo2 ? "block" : "none";
+
+    clockBox.style.display = item.showClock ? "block" : "none";
+
+    marqueeContent.textContent = item.marquee || "";
+marqueeText.style.display = item.marquee ? "block" : "none";
+
+
+ 
+  }
+
+
+ 
+
+  
+ async function playMP4(url, item){
+  updateOverlays(item);
+  await destroyPlayers();
+  video.src = url;
+  video.load();
+
+  let retryTimeout;
+  function retryPlay(){
+    retryTimeout = setTimeout(async () => {
+      try {
+        await video.play();
+      } catch(e){
+        retryPlay();
+      }
+    }, 3000);
+  }
+
+  video.onerror = () => {
+    console.log("Video error, retrying in 3s...");
+    retryPlay();
+  };
+
+  try { await video.play(); }
+  catch(e){ retryPlay(); }
+}
+
+
+/* ===========================
+   DITO MO ILALAGAY ANG ADS
+=========================== */
+
+async function playAds(){
+
+  if(adPlaying) return;
+
+  adPlaying = true;
+
+  savedMovieTime = video.currentTime;
+
+  const ad = commercials[currentAdIndex];
+
+  await destroyPlayers();
+  video.src = ad.manifest;
+  video.load();
+
+  try{
+    await video.play();
+  }catch(e){}
+
+  video.addEventListener("ended", async function adEnd(){
+
+    video.removeEventListener("ended", adEnd);
+
+    currentAdIndex++;
+
+    if(currentAdIndex < commercials.length){
+
+      playAds();
+
+    }else{
+
+      currentAdIndex = 0;
+      adPlaying = false;
+
+      const movie = playlist[currentIndex];
+
+      await playMP4(movie.manifest,movie);
+
+      video.currentTime = savedMovieTime;
+
+    }
+
+  });
+
+}
+
+
+async function playMPD(url, keyString, item){
+  updateOverlays(item);
+  await destroyPlayers();
+  shakaPlayer = new shaka.Player(video);
+
+  if(keyString){
+    const [k1, k2] = keyString.split(":");
+    shakaPlayer.configure({ drm:{ clearKeys:{[k1.trim()]: k2.trim()} } });
+  }
+
+  // Retry on Shaka network error
+  shakaPlayer.addEventListener('error', (event) => {
+    const shakaError = event.detail;
+    console.warn("Shaka Player error, retrying in 3s...", shakaError);
+    setTimeout(async () => {
+    try { 
+  await shakaPlayer.load(url); 
+  await video.play();
+
+  const savedTime = localStorage.getItem(resumeKey);
+  if(savedTime){
+    video.currentTime = savedTime;
+  }
+
+} catch(e){ 
+  console.log("Autoplay failed, will retry.", e); 
+}
+    }, 3000);
+  });
+
+ try { 
+  await shakaPlayer.load(url); 
+  await video.play();
+
+  const savedTime = localStorage.getItem(resumeKey);
+  if(savedTime){
+    video.currentTime = savedTime;
+  }
+
+} catch(e){ 
+  console.log("Autoplay failed, will retry.", e); 
+}
+
+}
+async function playNext(){
+  const item = playlist[currentIndex];
+
+  if(item.type === "MP4"){
+    await playMP4(item.manifest, item);
+  } else if(item.type === "IPTV"){
+    await playMPD(item.manifest, item.key, item);
+  }
+
+  video.onended = () => {
+    currentIndex = (currentIndex + 1) % playlist.length;
+    playNext();
+  };
+}
+ 
+  
+  
+  // AUTO RESUME kapag nawalan ng internet
+window.addEventListener("online", () => {
+  console.log("Internet restored, resuming playback...");
+  playNext();
+});
+
+// Kapag nag buffering o huminto ang video
+video.addEventListener("stalled", () => {
+  console.log("Video stalled, retrying...");
+  setTimeout(() => {
+    video.play().catch(()=>{});
+  }, 3000);
+});
+  
+video.addEventListener("timeupdate", () => {
+  localStorage.setItem(resumeKey, video.currentTime);
+});
+  
+video.addEventListener("waiting", () => {
+  console.log("Buffering detected, retrying...");
+  setTimeout(() => {
+    video.play().catch(()=>{});
+  }, 3000);
+});
+  
+  
+  // INTERNET WATCHDOG
+let internetTimer = null;
+
+// kapag nawalan internet
+window.addEventListener("offline", () => {
+  console.log("Internet lost");
+
+  internetTimer = setTimeout(() => {
+    console.log("No internet for 30s, refreshing page...");
+    location.reload();
+  }, 30000); // 30 seconds
+});
+
+// kapag bumalik internet
+window.addEventListener("online", () => {
+  console.log("Internet restored");
+
+  if(internetTimer){
+    clearTimeout(internetTimer);
+    internetTimer = null;
+  }
+
+  playNext(); // resume playlist
+});
+
+
+
+
+  // Start playlist autoplay
+ // Start playlist autoplay
+playNext();
+buildPlaylistUI();
+
+/* ADS EVERY 20 MINUTES */
+
+setInterval(()=>{
+
+  if(!adPlaying){
+    console.log("Ad break starting...");
+    playAds();
+  }
+
+},1200000); // 20 minutes
+  let playlistVisible = true;
+
+video.addEventListener("click", () => {
+
+  if(playlistVisible){
+    playlistPanel.style.display = "none";
+    playlistVisible = false;
+  }else{
+    playlistPanel.style.display = "block";
+    playlistVisible = true;
+  }
+
+});
+  // Optional: Fullscreen automatically
+  video.requestFullscreen?.();
+
+});
+
+ function updateClock(){
+
+  const now = new Date();
+
+  let hours = now.getHours();
+  let minutes = now.getMinutes();
+
+  let ampm = hours >= 12 ? "PM" : "AM";
+
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+
+  minutes = String(minutes).padStart(2,"0");
+
+  clockTime.textContent = hours + ":" + minutes + " " + ampm;
+
+}
+
+setInterval(updateClock,60000);
+updateClock();
+
+</script>
+
+
+
+     <script>
+/* ============================
+   SIMPLE PAGE PROTECTION ONLY
+   (NO CHANGE TO YOUR PLAYER)
+   ============================ */
+
+/* PALITAN MO ITO NG DOMAIN MO */
+var ALLOWED_HOST = "onesanmateocable.pages.dev/";
+
+/* fake 404 kapag ibang website binuksan */
+if (location.hostname !== ALLOWED_HOST) {
+  document.open();
+  document.write(`
+<html>
+      <head><title>SAN MATEO CABLE AFFLIATE</title></head>
+      <body style="margin:0;background:#000;color:#fff;
+      display:absulute;align-items:center;justify-content:center;
+      height:100vh;font-family:Arial;text-align: center;  overflow:hidden;">
+     <center>   <P><h1>ENJOY WATCHING</h1></P>
+        <p>PUMILI LAMANG SA DALAWA LIST AFFLIATE TV OR SAN MATEO CABLE</p>
+        <p>PARA LUMABAS ANG MGA CHANNELS</p><br><br><br></center>
+        <img src="https://i.imgur.com/urWAPgv.png"  width="80" height="60">
+        <p><center><h4>     &copy;2025-26 GOLDEN TELEVISION NETWORK | <a href="#">All Rights Reserved</a></h4></center></p>
+      </body>
+    </html>
+
+  `);
+  document.close();
+}
+
+/* disable right click */
+document.addEventListener("contextmenu", function(e){
+  e.preventDefault();
+});
+
+/* block CTRL+U and CTRL+SHIFT+C */
+document.addEventListener("keydown", function(e){
+
+  /* CTRL + U */
+  if (e.ctrlKey && e.key.toLowerCase() === "u") {
+    e.preventDefault();
+    return false;
+  }
+
+  /* CTRL + SHIFT + C */
+  if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "c") {
+    e.preventDefault();
+    return false;
+  }
+
+});
+</script>
+
+
+<script disable-devtool-auto
+src="https://cdn.jsdelivr.net/npm/disable-devtool"></script>
+
+</body>
+</html>
+
